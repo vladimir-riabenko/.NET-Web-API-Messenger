@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using Messenger.BLL.Managers.Interfaces;
+using Messenger.WEB.Roles;
 
 namespace Messenger.WEB.Controllers
 {
@@ -51,7 +52,7 @@ namespace Messenger.WEB.Controllers
                 new { userId = user.Id, code = emailToken },
                 HttpContext.Request.Scheme);
             await _emailManager.SendEmailAsync(model.Email, "Confirm new account", _emailManager.RegistrationMessageTemplate(model.UserName, callbackUrl));
-            
+
             return result;
         }
 
@@ -209,11 +210,11 @@ namespace Messenger.WEB.Controllers
         ///     }
         /// </remarks>
         [HttpPut]
-        public UserViewModel UpdateUser([FromBody] UserUpdateModel userModel)
+        public async Task<ActionResult<UserViewModel>> UpdateUser([FromForm] UserUpdateModel userModel)
         {
             var userId = GetUserIdFromHttpContext();
             
-            return _accountManager.UpdateUser(userModel, userId);
+            return await _accountManager.UpdateUser(userModel, userId);
         }
 
         [HttpGet]
@@ -224,9 +225,24 @@ namespace Messenger.WEB.Controllers
             return _accountManager.GetCurrentUser(userId);
         }
 
+        [HttpGet]
+        [Authorize(Roles = RolesConstants.Admin)]
+        public string TestAdmin()
+        {
+            return "You have role Admin";
+        }
+
+        [HttpGet]
+        public Task<bool> IsUserSuperAdmin()
+        {
+            var userId = GetUserIdFromHttpContext();
+
+            return _accountManager.IsUserSuperAdmin(userId);
+        }
+
         private string GetUserIdFromHttpContext()
         {
-            var httpContext = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier);
+            var httpContext = User.FindFirst(ClaimTypes.NameIdentifier);
             if (httpContext == null)
                 throw new KeyNotFoundException();
             

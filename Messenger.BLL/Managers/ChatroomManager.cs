@@ -1,6 +1,8 @@
 ﻿using AutoMapper;
+using Messenger.BLL.ChatImages;
 using Messenger.BLL.Chats;
 using Messenger.BLL.Exceptions;
+using Messenger.BLL.Managers.Interfaces;
 using Messenger.BLL.UserAccounts;
 using Messenger.DAL.Entities;
 using Messenger.DAL.UoW;
@@ -14,19 +16,77 @@ namespace Messenger.BLL.Managers
     {
         private readonly IMapper _mapper;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IImageManager _imageManager;
+        private readonly IActionLogManager _logger;
 
         public ChatroomManager(IMapper mapper,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork,
+            IImageManager imageManager,
+            IActionLogManager actionLogManager)
         {
             _mapper = mapper;
             _unitOfWork = unitOfWork;
+            _imageManager = imageManager;
+            _logger = actionLogManager;
         }
 
         public async Task<ChatViewModel> CreateChatroom(ChatCreateModel chatModel, string userId)
         {
             var chatEntity = _mapper.Map<Chat>(chatModel);
+
             var chatViewModel = _mapper.Map<ChatViewModel>(await _unitOfWork.Chats.CreateAsync(chatEntity));
-            
+
+            var filePath = "/DefaultImage/image.png";
+
+            if (chatModel.File != null)
+            {
+                filePath = await _imageManager.UploadImage(chatModel.File);
+            }
+
+            ChatImage imageEntity = new()
+            {
+                Path = filePath,
+                ChatId = chatViewModel.Id
+            };
+
+            await _unitOfWork.ChatImages.CreateAsync(imageEntity);
+
+            UserAccountCreateModel ownerAccountModel = new()
+            {
+                ChatId = chatViewModel.Id,
+                UserId = userId,
+                IsOwner = true,
+                IsAdmin = true
+            };
+            var ownerAccountEntity = _mapper.Map<UserAccount>(ownerAccountModel);
+
+            var resultEntity = await _unitOfWork.UserAccounts.CreateAsync(ownerAccountEntity);
+
+            await _logger.CreateLog("Chat Created", userId);
+
+            return chatViewModel;
+        }
+
+        public async Task<ChatViewModel> CreateAdminsChatroom(ChatCreateModel chatModel, string userId)
+        {
+            var chatEntity = _mapper.Map<Chat>(chatModel);
+            chatEntity.IsAdminsRoom = true;
+            var chatViewModel = _mapper.Map<ChatViewModel>(await _unitOfWork.Chats.CreateAsync(chatEntity));
+            var filePath = "/DefaultImage/adminsRoom.png";
+            var userEntityList = _unitOfWork.Users.GetAll().ToList();
+            if (chatModel.File != null)
+            {
+                filePath = await _imageManager.UploadImage(chatModel.File);
+            }
+
+            ChatImage imageEntity = new()
+            {
+                Path = filePath,
+                ChatId = chatViewModel.Id
+            };
+
+            await _unitOfWork.ChatImages.CreateAsync(imageEntity);
+
             UserAccountCreateModel ownerAccountModel = new()
             {
                 ChatId = chatViewModel.Id,
@@ -36,6 +96,8 @@ namespace Messenger.BLL.Managers
             };
             var ownerAccountEntity = _mapper.Map<UserAccount>(ownerAccountModel);
             await _unitOfWork.UserAccounts.CreateAsync(ownerAccountEntity);
+
+            userEntityList.ForEach(user => AddToChatroom(user.Id, chatEntity.Id, userId));
 
             return chatViewModel;
         }
@@ -51,6 +113,14 @@ namespace Messenger.BLL.Managers
                 throw new KeyNotFoundException();
 
             var chatEntity = _mapper.Map<Chat>(chatModel);
+
+            if (chatModel.File != null)
+            {
+                var filePath = await _imageManager.UploadImage(chatModel.File);
+                var chatImageEntity = _unitOfWork.ChatImages.GetAll().Where(u => u.ChatId == chatModel.Id).SingleOrDefault();
+                chatImageEntity.Path = filePath;
+                _unitOfWork.ChatImages.Update(chatImageEntity);
+            }
 
             return _mapper.Map<ChatUpdateModel>(await _unitOfWork.Chats.UpdateAsync(chatEntity));
         }
@@ -185,19 +255,18 @@ namespace Messenger.BLL.Managers
         public async Task<UserAccountViewModel> BanUser(int userAccountId, string adminId)
         {
             var userAccountEntity = _unitOfWork.UserAccounts.GetAll()
-                .Where(u => u.Id == userAccountId)
+                .Where(u => u.Id == userAccountId && !u.IsLeft)
                 .SingleOrDefault();
 
             var adminAccountEntity = _unitOfWork.UserAccounts.GetAll()
                 .Where(u => u.User.Id == adminId &&
-                u.Chat.Id == userAccountEntity.Chat.Id && u.IsAdmin)
+                u.Chat.Id == userAccountEntity.Chat.Id && u.IsAdmin && !u.IsLeft)
                 .SingleOrDefault();
 
             if (adminAccountEntity == null || userAccountEntity == null)
                 throw new KeyNotFoundException();
 
             userAccountEntity.IsBanned = true;
-            userAccountEntity.IsAdmin = false;
 
             return _mapper.Map<UserAccountViewModel>(await _unitOfWork.UserAccounts.UpdateAsync(userAccountEntity));
         }

@@ -1,5 +1,5 @@
-﻿using System.Collections.Generic;
-using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.AspNetCore.Identity;
+using System.Collections.Generic;
 
 namespace Messenger.DAL.Entities
 {
@@ -12,6 +12,11 @@ namespace Messenger.DAL.Entities
         public virtual ICollection<User> BlockedUsersFrom { get; set; }
 
         public virtual ICollection<Message> Messages { get; set; }
+
         public virtual ICollection<UserAccount> Chats { get; set; }
+
+        public virtual ICollection<ActionLog> ActionLogs { get; set; }
+
+        public virtual UserImage Image { get; set; }
     }
 }

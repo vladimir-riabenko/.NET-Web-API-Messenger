@@ -19,12 +19,38 @@ namespace Messenger.DAL.Migrations
                 .HasAnnotation("ProductVersion", "5.0.16")
                 .HasAnnotation("SqlServer:ValueGenerationStrategy", SqlServerValueGenerationStrategy.IdentityColumn);
 
+            modelBuilder.Entity("Messenger.DAL.Entities.ActionLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasAnnotation("SqlServer:ValueGenerationStrategy", SqlServerValueGenerationStrategy.IdentityColumn);
+
+                    b.Property<string>("ActionName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("Time")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UserId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("ActionLogs");
+                });
+
             modelBuilder.Entity("Messenger.DAL.Entities.Chat", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int")
                         .HasAnnotation("SqlServer:ValueGenerationStrategy", SqlServerValueGenerationStrategy.IdentityColumn);
+
+                    b.Property<bool>("IsAdminsRoom")
+                        .HasColumnType("bit");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
@@ -39,6 +65,28 @@ namespace Messenger.DAL.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Chats");
+                });
+
+            modelBuilder.Entity("Messenger.DAL.Entities.ChatImage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasAnnotation("SqlServer:ValueGenerationStrategy", SqlServerValueGenerationStrategy.IdentityColumn);
+
+                    b.Property<int>("ChatId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChatId")
+                        .IsUnique();
+
+                    b.ToTable("ChatImages");
                 });
 
             modelBuilder.Entity("Messenger.DAL.Entities.Message", b =>
@@ -191,6 +239,29 @@ namespace Messenger.DAL.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("UserAccounts");
+                });
+
+            modelBuilder.Entity("Messenger.DAL.Entities.UserImage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasAnnotation("SqlServer:ValueGenerationStrategy", SqlServerValueGenerationStrategy.IdentityColumn);
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("UserId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasFilter("[UserId] IS NOT NULL");
+
+                    b.ToTable("UserImages");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
@@ -354,6 +425,26 @@ namespace Messenger.DAL.Migrations
                     b.ToTable("UserUserBlocked");
                 });
 
+            modelBuilder.Entity("Messenger.DAL.Entities.ActionLog", b =>
+                {
+                    b.HasOne("Messenger.DAL.Entities.User", "User")
+                        .WithMany("ActionLogs")
+                        .HasForeignKey("UserId");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Messenger.DAL.Entities.ChatImage", b =>
+                {
+                    b.HasOne("Messenger.DAL.Entities.Chat", "Chat")
+                        .WithOne("Image")
+                        .HasForeignKey("Messenger.DAL.Entities.ChatImage", "ChatId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Chat");
+                });
+
             modelBuilder.Entity("Messenger.DAL.Entities.Message", b =>
                 {
                     b.HasOne("Messenger.DAL.Entities.Chat", "Chat")
@@ -397,6 +488,15 @@ namespace Messenger.DAL.Migrations
                         .HasForeignKey("UserId");
 
                     b.Navigation("Chat");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Messenger.DAL.Entities.UserImage", b =>
+                {
+                    b.HasOne("Messenger.DAL.Entities.User", "User")
+                        .WithOne("Image")
+                        .HasForeignKey("Messenger.DAL.Entities.UserImage", "UserId");
 
                     b.Navigation("User");
                 });
@@ -484,6 +584,8 @@ namespace Messenger.DAL.Migrations
 
             modelBuilder.Entity("Messenger.DAL.Entities.Chat", b =>
                 {
+                    b.Navigation("Image");
+
                     b.Navigation("Messages");
 
                     b.Navigation("Users");
@@ -496,7 +598,11 @@ namespace Messenger.DAL.Migrations
 
             modelBuilder.Entity("Messenger.DAL.Entities.User", b =>
                 {
+                    b.Navigation("ActionLogs");
+
                     b.Navigation("Chats");
+
+                    b.Navigation("Image");
 
                     b.Navigation("Messages");
                 });

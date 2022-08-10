@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using Messenger.BLL.Exceptions;
+using Messenger.BLL.Managers.Interfaces;
 using Messenger.BLL.Token;
 using Messenger.BLL.Users;
 using Messenger.DAL.Entities;
@@ -17,34 +18,58 @@ namespace Messenger.BLL.Managers
         private readonly IMapper _mapper;
         private readonly ITokenService _tokenService;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IImageManager _imageManager;
+        private readonly IActionLogManager _logger;
         public AccountManager (UserManager<User> userManager, 
             IMapper mapper, 
             ITokenService tokenService,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork,
+            IImageManager imageManager,
+            IActionLogManager actionLogManager)
         {
             _userManager = userManager;
             _mapper = mapper;
             _tokenService = tokenService;
             _unitOfWork = unitOfWork;
+            _imageManager = imageManager;
+            _logger = actionLogManager;
         }
 
         public async Task<UserViewModel> RegisterUser(UserCreateModel model)
         {
+            var filePath = "/DefaultUserImage/image.png";
+
             User user = _mapper.Map<User>(model);
             var result = await _userManager.CreateAsync(user, model.Password);
+
             if (!result.Succeeded)
+            {
                 throw new BadRequestException("Registration Error");
+            }
+                
+            await _userManager.AddToRoleAsync(user, "User");
 
             var userEntity = _unitOfWork.Users.GetAll().Where(x => x.UserName == model.UserName).SingleOrDefault();
-            var userModel = _mapper.Map<UserViewModel>(userEntity);
+            var userViewModel = _mapper.Map<UserViewModel>(userEntity);
 
-            return userModel;
+            UserImage imageEntity = new()
+            {
+                Path = filePath,
+                UserId = userViewModel.Id
+            };
+
+            await _unitOfWork.UserImages.CreateAsync(imageEntity);
+            await _logger.CreateLog("Registered", userEntity.Id);
+
+            return userViewModel;
         }
 
         public async Task<bool> ConfirmEmail(string userId, string code)
         {
             var user = await _userManager.FindByIdAsync(userId);
             var result = await _userManager.ConfirmEmailAsync(user, code);
+
+            await _logger.CreateLog("Confirmed Email", user.Id);
 
             return result.Succeeded;
         }
@@ -57,13 +82,11 @@ namespace Messenger.BLL.Managers
                 throw new BadRequestException("This username is not registered");
             if (!await _userManager.IsEmailConfirmedAsync(userEntity))
                 throw new BadRequestException("Email is not confirmed");
-            if (userEntity == null)
-                throw new BadRequestException("Login error");
             if (!await _userManager.CheckPasswordAsync(userEntity, model.Password))
                 throw new BadRequestException("Incorrect Password");
 
             var userModel = _mapper.Map<UserViewModel>(userEntity);
-            userModel.Token = GenerateToken(userEntity);
+            userModel.Token = await GenerateToken(userEntity);
 
             return userModel;
         }
@@ -71,19 +94,27 @@ namespace Messenger.BLL.Managers
         public async Task<bool> ChangeUserPassword(UserChangePasswordModel model, string userId)
         {
             if (model.Id != userId)
-                throw new BadRequestException("Wtf man this account ID is not yours.");
+            {
+                throw new BadRequestException("man this account ID is not yours.");
+            } 
 
             var user = await _userManager.FindByIdAsync(model.Id);
+
             if (user == null)
+            {
                 throw new KeyNotFoundException();
+            }
+                
             var result = await _userManager.ChangePasswordAsync(user, model.OldPassword, model.NewPassword);
+
+            await _logger.CreateLog("Changed Password", user.Id);
 
             return result.Succeeded;
         }
 
-        private string GenerateToken(User user)
+        private async Task<string> GenerateToken(User user)
         {
-            var generatedToken = _tokenService.BuildToken(user);
+            var generatedToken = await _tokenService.BuildTokenAsync(user);
             if (generatedToken == null)
                 throw new BadRequestException("Failed generate token");
 
@@ -210,21 +241,43 @@ namespace Messenger.BLL.Managers
             return _mapper.Map<UserViewModel>(userEntity);
         }
 
-        public UserViewModel UpdateUser(UserUpdateModel userModel, string userId)
+        public async Task<UserViewModel> UpdateUser(UserUpdateModel userModel, string userId)
         {
             if (userModel.Id != userId)
-                throw new BadRequestException("Wtf man this account ID is not yours.");
+            {
+                throw new BadRequestException("man this account ID is not yours.");
+            }
 
             var userEntity = _unitOfWork.Users.GetById(userModel.Id);
             userEntity.UserName = userModel.UserName;
             userEntity.Email = userModel.Email;
+
+            if (userModel.File != null)
+            {
+                var filePath = await _imageManager.UploadImage(userModel.File);
+                var userImageEntity = _unitOfWork.UserImages.GetAll().Where(u => u.UserId == userModel.Id).SingleOrDefault();
+                userImageEntity.Path = filePath;
+                _unitOfWork.UserImages.Update(userImageEntity);
+            }
+
             var result = _unitOfWork.Users.Update(userEntity);
+
+            await _logger.CreateLog("Updated Profile", userEntity.Id);
 
             return _mapper.Map<UserViewModel>(result);
         }
 
+        public async Task<bool> IsUserSuperAdmin(string userId)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+
+            return await _userManager.IsInRoleAsync(user, "Admin");
+        }
+
         public UserViewModel GetCurrentUser(string userId)
         {
+            var userIdEntity = _userManager.FindByIdAsync(userId).Result;
+            var roles = _userManager.GetRolesAsync(userIdEntity).Result;
             var userEntity = _unitOfWork.Users.GetAll().Where(x => x.Id == userId).SingleOrDefault();
             if (userEntity == null)
                 throw new KeyNotFoundException();

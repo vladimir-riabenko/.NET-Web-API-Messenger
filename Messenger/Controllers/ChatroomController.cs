@@ -1,6 +1,8 @@
 ﻿using Messenger.BLL.Chats;
 using Messenger.BLL.Managers;
 using Messenger.BLL.UserAccounts;
+using Messenger.WEB.Roles;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
@@ -32,14 +34,20 @@ namespace Messenger.WEB.Controllers
         ///     }
         /// </remarks>
         [HttpPost]
-        public async Task<ActionResult<ChatViewModel>> CreateChatroom([FromBody] ChatCreateModel chat)
+        public async Task<ActionResult<ChatViewModel>> CreateChatroom([FromForm] ChatCreateModel chat)
         {
-            var httpContext = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier);
-            if (httpContext == null)
-                throw new KeyNotFoundException();
+            var userId = GetUserIdFromHttpContext();
 
-            var userId = httpContext.Value;
             return await _chatroomManager.CreateChatroom(chat, userId);
+        }
+
+        [HttpPost]
+        [Authorize(Roles = RolesConstants.Admin)]
+        public async Task<ActionResult<ChatViewModel>> CreateAdminsChatroom([FromForm] ChatCreateModel chat)
+        {
+            var userId = GetUserIdFromHttpContext();
+
+            return await _chatroomManager.CreateAdminsChatroom(chat, userId);
         }
 
         /// <remarks>
@@ -52,7 +60,7 @@ namespace Messenger.WEB.Controllers
         ///     }
         /// </remarks>
         [HttpPut]
-        public async Task<ActionResult<ChatUpdateModel>> EditChatroom([FromBody] ChatUpdateModel chat)
+        public async Task<ActionResult<ChatUpdateModel>> EditChatroom([FromForm] ChatUpdateModel chat)
         {
             var adminId = GetUserIdFromHttpContext();
 

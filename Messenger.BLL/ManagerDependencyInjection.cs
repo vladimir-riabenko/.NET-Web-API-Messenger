@@ -11,7 +11,9 @@ namespace Messenger.BLL
             services.AddTransient<IAccountManager, AccountManager>();
             services.AddTransient<IMessageManager, MessageManager>();
             services.AddTransient<IChatroomManager, ChatroomManager>();
+            services.AddTransient<IImageManager, ImageManager>();
             services.AddTransient<IEmailManager, EmailManager>();
+            services.AddTransient<IActionLogManager, ActionLogManager>();
 
             return services;
         }
